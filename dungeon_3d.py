@@ -449,11 +449,11 @@ class Game:
             self.textures = load_textures()
             base_path = os.path.dirname(__file__) + "/assets/audio/"
             self.potion_sound = pygame.mixer.Sound(os.path.join(base_path, "potion_pickup.wav"))  # Charger le son des potions
-            self.potion_use_sound = pygame.mixer.Sound(os.path.join(base_path, "potion_use.wav"))  # Son pour utiliser une potion
+            self.potion_use_sound = pygame.mixer.Sound(os.path.join(base_path, "02_Heal_02.wav"))  # Son pour utiliser une potion
         except Exception as e:
             print(f"Erreur de chargement des ressources : {e}")
-            self.enemy_sprites = {'orc': generate_enemy_sprite()}
-            self.textures = {}
+            # self.enemy_sprites = {'orc': generate_enemy_sprite()}
+            # self.textures = {}
             self.potion_sound = None
             self.potion_use_sound = None
         
