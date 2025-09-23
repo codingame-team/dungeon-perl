@@ -1,0 +1,58 @@
+@startuml
+' Diagramme UML de la cartographie applicative
+
+package "Jeux Python" {
+  class Dungeon2D {
+    {static} +main()
+    +init_dungeon()
+    +emplace_rooms()
+    +corridors()
+  }
+  class Dungeon3D {
+    {static} +main()
+    +generate_rooms()
+    +generate_corridors()
+  }
+}
+
+package "Utilitaires Python" {
+  class LoadAssets {
+    +load_enemy_sprites()
+    +generate_default_sprite()
+  }
+}
+
+package "Scripts Perl" {
+  class DungeonPL {
+    +Générateur de donjon
+  }
+  class MapPL {
+    +Analyse dépendances
+    +Génère carte.dot
+  }
+}
+
+package "Ressources" {
+  class Assets <<resource>>
+  class CarteDot <<resource>>
+}
+
+package "Documentation" {
+  class Readme <<documentation>>
+}
+
+' Relations Python
+Dungeon3D ..> LoadAssets : utilise
+Dungeon3D ..> Assets : lit sprites/sons
+LoadAssets ..> Assets : charge
+
+' Relations Perl
+MapPL ..> DungeonPL : analyse
+MapPL ..> CarteDot : génère
+DungeonPL ..> Assets : optionnel
+
+' Documentation
+Readme ..> Dungeon2D : décrit
+Readme ..> Dungeon3D : décrit
+
+@enduml

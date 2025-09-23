@@ -1,0 +1,85 @@
+@startuml
+' Diagramme UML des classes du script dungeon_3d.py
+
+class Dungeon {
+  -width: int
+  -height: int
+  -grid: list
+  -rooms: list
+  +generate()
+  +is_wall(x, y)
+}
+
+class Player3D {
+  -x: float
+  -y: float
+  -z: float
+  -angle: float
+  -fov: float
+  -hp: int
+  -max_hp: int
+  -potions: int
+  +move(dx, dy, dungeon)
+  +rotate(angle_delta)
+  +take_damage(damage)
+  +update()
+  +use_potion(potion_use_sound)
+  +shoot(...)
+}
+
+class Bullet {
+  -x: float
+  -y: float
+  -z: float
+  -angle: float
+  -speed: float
+  -life: int
+  -is_player_bullet: bool
+  +update(dungeon)
+}
+
+class HealthPotion {
+  -x: float
+  -y: float
+  -z: float
+  -heal_amount: int
+}
+
+class Enemy {
+  -x: float
+  -y: float
+  -z: float
+  -enemy_type: str
+  -height: float
+  +update(player, dungeon, enemies)
+}
+
+class Game {
+  -screen: pygame.Surface
+  -player: Player3D
+  -dungeon: Dungeon
+  -enemies: list
+  -health_potions: list
+  -bullets: list
+  +setup_dungeon()
+  +place_entities()
+  +handle_input(keys)
+  +update_bullets()
+  +collect_potions()
+  +render_3d()
+  +draw_minimap()
+  +run()
+}
+
+' Relations
+Game --> Dungeon
+Game --> Player3D
+Game --> Enemy
+Game --> Bullet
+Game --> HealthPotion
+Enemy --> Bullet
+Player3D --> Bullet
+Game ..> pygame.Surface : utilise
+
+@enduml
+
