@@ -657,164 +657,131 @@ class Game:
                 elif event.type == pygame.KEYDOWN and event.key == pygame.K_r:
                     return True
 
+    def render_entity(self, enemy, width, height):
+        distance, angle_diff, screen_x = get_perspective_params(enemy.x, enemy.y, self.player, width, height)
+        if distance < 10 and abs(angle_diff) < self.player.fov / 2 and has_line_of_sight(self.player, enemy, self.dungeon):
+            sprite_surface = self.enemy_sprites.get(enemy.enemy_type, self.enemy_sprites.get('orc', generate_enemy_sprite()))
+            original_width, original_height = sprite_surface.get_size()
+            aspect_ratio = original_width / original_height
+            real_height = enemy.height
+            perspective_scale = 1.0 / (distance + 0.1)
+            screen_height_px = max(40, int(real_height * 200 * perspective_scale))
+            screen_width_px = int(screen_height_px * aspect_ratio)
+            eye_level_y = height // 2
+            vertical_offset = int(self.player.eye_height * VERTICAL_PERSPECTIVE_FACTOR / (distance + 0.1))
+            ground_level_y = eye_level_y + vertical_offset
+            sprite_y = ground_level_y - screen_height_px
+            sprite_x = screen_x - screen_width_px // 2
+            if 0 <= screen_x < width and screen_height_px > 10:
+                scaled_sprite = pygame.transform.scale(sprite_surface, (screen_width_px, screen_height_px))
+                brightness = max(0.3, 1.0 - distance / 10)
+                dark_sprite = scaled_sprite.copy()
+                if enemy.hit_animation > 0:
+                    hit_intensity = enemy.hit_animation / 10.0
+                    red_tint = (255, int(100 * hit_intensity), int(100 * hit_intensity))
+                    dark_sprite.fill(red_tint, special_flags=pygame.BLEND_MULT)
+                else:
+                    dark_sprite.fill((int(255 * brightness), int(255 * brightness), int(255 * brightness)), special_flags=pygame.BLEND_MULT)
+                self.screen.blit(dark_sprite, (sprite_x, sprite_y))
+                pygame.draw.circle(self.screen, (0, 255, 255), (screen_x, eye_level_y), 2)
+                pygame.draw.circle(self.screen, (255, 0, 0), (screen_x, ground_level_y), 3)
+                font = pygame.font.Font(None, 20)
+                dist_text = f"d={distance:.1f}"
+                text_surface = font.render(dist_text, True, (255, 255, 0))
+                text_x = screen_x - text_surface.get_width() // 2
+                text_y = ground_level_y + 5
+                self.screen.blit(text_surface, (text_x, text_y))
+
+    def render_potion(self, potion, width, height):
+        distance, angle_diff, screen_x = get_perspective_params(potion.x, potion.y, self.player, width, height)
+        if distance < 8 and abs(angle_diff) < self.player.fov / 2 and has_line_of_sight(self.player, potion, self.dungeon):
+            real_height = 0.3
+            perspective_scale = 1.0 / (distance + 0.1)
+            potion_size = max(20, int(real_height * 200 * perspective_scale))
+            eye_level_y = height // 2
+            vertical_offset = int(self.player.eye_height * VERTICAL_PERSPECTIVE_FACTOR / (distance + 0.1))
+            ground_level_y = eye_level_y + vertical_offset
+            sprite_bottom = ground_level_y
+            potion_y = sprite_bottom - potion_size
+            if 0 <= screen_x < width and potion_size > 5:
+                pygame.draw.circle(self.screen, (0, 255, 0), (screen_x, potion_y + potion_size // 2), potion_size // 3)
+                pygame.draw.line(self.screen, (255, 255, 255), (screen_x - potion_size // 4, potion_y + potion_size // 2), (screen_x + potion_size // 4, potion_y + potion_size // 2), 3)
+                pygame.draw.line(self.screen, (255, 255, 255), (screen_x, potion_y + potion_size // 2 - potion_size // 4), (screen_x, potion_y + potion_size // 2 + potion_size // 4), 3)
+
+    def render_bullet(self, bullet, width, height):
+        distance, angle_diff, screen_x = get_perspective_params(bullet.x, bullet.y, self.player, width, height)
+        if distance < 8 and abs(angle_diff) < self.player.fov / 2:
+            bullet_size = max(3, int(20 / (distance + 0.1)))
+            bullet_y = height // 2
+            if 0 <= screen_x < width:
+                bullet_color = (255, 255, 0) if bullet.is_player_bullet else (255, 100, 100)
+                pygame.draw.circle(self.screen, bullet_color, (screen_x, bullet_y), bullet_size)
+
+    def render_walls(self, width, height):
+        for x in range(0, width, 2):
+            angle = self.player.angle - self.player.fov / 2 + (x / width) * self.player.fov
+            distance, hit_x, hit_y = cast_ray(self.player, angle, self.dungeon)
+            distance *= math.cos(angle - self.player.angle)
+            if distance > 0:
+                wall_height = int(height / (distance + 0.1))
+                wall_top = (height - wall_height) // 2
+                wall_bottom = wall_top + wall_height
+                wall_x = hit_x - math.floor(hit_x)
+                if abs(math.cos(angle)) > abs(math.sin(angle)):
+                    wall_x = hit_y - math.floor(hit_y)
+                base_color = 120 if int(wall_x * 8) % 2 == 0 else 100
+                brightness = max(50, 255 - int(distance * 12))
+                color = (min(255, base_color + brightness // 3), min(255, base_color // 2 + brightness // 4), min(255, base_color // 3 + brightness // 5))
+                pygame.draw.line(self.screen, color, (x, wall_top), (x, wall_bottom), 2)
+
+    def render_player_ui(self, width, height):
+        debug_font = pygame.font.Font(None, 24)
+        player_debug = debug_font.render(f"Player: ({self.player.x:.1f}, {self.player.y:.1f}, {self.player.z:.1f})", True, (255, 255, 0))
+        self.screen.blit(player_debug, (10, height - 60))
+        enemy_count = debug_font.render(f"Enemies visible: {len([e for e in self.enemies if math.sqrt((e.x - self.player.x) ** 2 + (e.y - self.player.y) ** 2) < 10])}", True, (255, 255, 0))
+        self.screen.blit(enemy_count, (10, height - 40))
+        health_bar_width = 200
+        health_bar_height = 20
+        health_x = width - health_bar_width - 10
+        health_y = 10
+        pygame.draw.rect(self.screen, (100, 0, 0), (health_x, health_y, health_bar_width, health_bar_height))
+        health_ratio = self.player.hp / self.player.max_hp
+        health_width = int(health_bar_width * health_ratio)
+        pygame.draw.rect(self.screen, (0, 255, 0), (health_x, health_y, health_width, health_bar_height))
+        pygame.draw.rect(self.screen, (255, 255, 255), (health_x, health_y, health_bar_width, health_bar_height), 2)
+        font = pygame.font.Font(None, 24)
+        hp_text = font.render(f"HP: {self.player.hp}/{self.player.max_hp}", True, (255, 255, 255))
+        self.screen.blit(hp_text, (health_x, health_y + health_bar_height + 5))
+        potion_text = font.render(f"Potions: {self.player.potions}", True, (0, 255, 0))
+        self.screen.blit(potion_text, (health_x - 120, health_y + 5))
+        center_x, center_y = width // 2, height // 2
+        crosshair_size = 10
+        crosshair_color = (255, 255, 255) if self.player.shoot_cooldown == 0 else (255, 0, 0)
+        pygame.draw.line(self.screen, crosshair_color, (center_x - crosshair_size, center_y), (center_x + crosshair_size, center_y), 2)
+        pygame.draw.line(self.screen, crosshair_color, (center_x, center_y - crosshair_size), (center_x, center_y + crosshair_size), 2)
+        if self.player.shoot_flash > 0:
+            flash_intensity = self.player.shoot_flash / 8.0
+            flash_size = int(30 * flash_intensity)
+            flash_color = (255, int(255 * flash_intensity), 0)
+            pygame.draw.circle(self.screen, flash_color, (center_x, center_y), flash_size // 2)
+            for i in range(5):
+                particle_x = center_x + random.randint(-flash_size, flash_size)
+                particle_y = center_y + random.randint(-flash_size // 2, flash_size // 2)
+                particle_size = max(1, int(flash_size // 4 * flash_intensity))
+                pygame.draw.circle(self.screen, (255, 200, 0), (particle_x, particle_y), particle_size)
+
     def render_3d(self):
         width, height = self.screen.get_size()
         self.screen.fill((50, 50, 100))
         pygame.draw.rect(self.screen, (100, 50, 0), (0, height // 2, width, height // 2))
-
-        def render_walls():
-            for x in range(0, width, 2):
-                angle = self.player.angle - self.player.fov / 2 + (x / width) * self.player.fov
-                distance, hit_x, hit_y = cast_ray(self.player, angle, self.dungeon)
-                distance *= math.cos(angle - self.player.angle)
-                if distance > 0:
-                    wall_height = int(height / (distance + 0.1))
-                    wall_top = (height - wall_height) // 2
-                    wall_bottom = wall_top + wall_height
-                    wall_x = hit_x - math.floor(hit_x)
-                    if abs(math.cos(angle)) > abs(math.sin(angle)):
-                        wall_x = hit_y - math.floor(hit_y)
-                    base_color = 120 if int(wall_x * 8) % 2 == 0 else 100
-                    brightness = max(50, 255 - int(distance * 12))
-                    color = (min(255, base_color + brightness // 3), min(255, base_color // 2 + brightness // 4), min(255, base_color // 3 + brightness // 5))
-                    pygame.draw.line(self.screen, color, (x, wall_top), (x, wall_bottom), 2)
-
-        def render_entity(enemy):
-            dx = enemy.x - self.player.x
-            dy = enemy.y - self.player.y
-            distance = math.sqrt(dx * dx + dy * dy)
-            if distance < 10:
-                enemy_angle = math.atan2(dy, dx)
-                angle_diff = enemy_angle - self.player.angle
-                while angle_diff > math.pi:
-                    angle_diff -= 2 * math.pi
-                while angle_diff < -math.pi:
-                    angle_diff += 2 * math.pi
-                if abs(angle_diff) < self.player.fov / 2 and has_line_of_sight(self.player, enemy, self.dungeon):
-                    screen_x = int(width / 2 + (angle_diff / (self.player.fov / 2)) * width / 2)
-                    sprite_surface = self.enemy_sprites.get(enemy.enemy_type, self.enemy_sprites.get('orc', generate_enemy_sprite()))
-                    original_width, original_height = sprite_surface.get_size()
-                    aspect_ratio = original_width / original_height
-                    real_height = enemy.height
-                    perspective_scale = 1.0 / (distance + 0.1)
-                    screen_height_px = max(40, int(real_height * 200 * perspective_scale))
-                    screen_width_px = int(screen_height_px * aspect_ratio)
-                    eye_level_y = height // 2
-                    vertical_offset = int(self.player.eye_height * VERTICAL_PERSPECTIVE_FACTOR / (distance + 0.1))
-                    ground_level_y = eye_level_y + vertical_offset
-                    sprite_y = ground_level_y - screen_height_px
-                    sprite_x = screen_x - screen_width_px // 2
-                    if 0 <= screen_x < width and screen_height_px > 10:
-                        scaled_sprite = pygame.transform.scale(sprite_surface, (screen_width_px, screen_height_px))
-                        brightness = max(0.3, 1.0 - distance / 10)
-                        dark_sprite = scaled_sprite.copy()
-                        if enemy.hit_animation > 0:
-                            hit_intensity = enemy.hit_animation / 10.0
-                            red_tint = (255, int(100 * hit_intensity), int(100 * hit_intensity))
-                            dark_sprite.fill(red_tint, special_flags=pygame.BLEND_MULT)
-                        else:
-                            dark_sprite.fill((int(255 * brightness), int(255 * brightness), int(255 * brightness)), special_flags=pygame.BLEND_MULT)
-                        self.screen.blit(dark_sprite, (sprite_x, sprite_y))
-                        pygame.draw.circle(self.screen, (0, 255, 255), (screen_x, eye_level_y), 2)
-                        pygame.draw.circle(self.screen, (255, 0, 0), (screen_x, ground_level_y), 3)
-                        font = pygame.font.Font(None, 20)
-                        dist_text = f"d={distance:.1f}"
-                        text_surface = font.render(dist_text, True, (255, 255, 0))
-                        text_x = screen_x - text_surface.get_width() // 2
-                        text_y = ground_level_y + 5
-                        self.screen.blit(text_surface, (text_x, text_y))
-
-        def render_potion(potion):
-            dx = potion.x - self.player.x
-            dy = potion.y - self.player.y
-            distance = math.sqrt(dx * dx + dy * dy)
-            if distance < 8:
-                potion_angle = math.atan2(dy, dx)
-                angle_diff = potion_angle - self.player.angle
-                while angle_diff > math.pi:
-                    angle_diff -= 2 * math.pi
-                while angle_diff < -math.pi:
-                    angle_diff += 2 * math.pi
-                if abs(angle_diff) < self.player.fov / 2 and has_line_of_sight(self.player, potion, self.dungeon):
-                    screen_x = int(width / 2 + (angle_diff / (self.player.fov / 2)) * width / 2)
-                    real_height = 0.3
-                    perspective_scale = 1.0 / (distance + 0.1)
-                    potion_size = max(20, int(real_height * 200 * perspective_scale))
-                    eye_level_y = height // 2
-                    vertical_offset = int(self.player.eye_height * VERTICAL_PERSPECTIVE_FACTOR / (distance + 0.1))
-                    ground_level_y = eye_level_y + vertical_offset
-                    sprite_bottom = ground_level_y
-                    potion_y = sprite_bottom - potion_size
-                    if 0 <= screen_x < width and potion_size > 5:
-                        pygame.draw.circle(self.screen, (0, 255, 0), (screen_x, potion_y + potion_size // 2), potion_size // 3)
-                        pygame.draw.line(self.screen, (255, 255, 255), (screen_x - potion_size // 4, potion_y + potion_size // 2), (screen_x + potion_size // 4, potion_y + potion_size // 2), 3)
-                        pygame.draw.line(self.screen, (255, 255, 255), (screen_x, potion_y + potion_size // 2 - potion_size // 4), (screen_x, potion_y + potion_size // 2 + potion_size // 4), 3)
-                        pygame.draw.circle(self.screen, (0, 255, 255), (screen_x, eye_level_y), 2)
-                        pygame.draw.circle(self.screen, (0, 0, 255), (screen_x, ground_level_y), 2)
-
-        def render_bullet(bullet):
-            dx = bullet.x - self.player.x
-            dy = bullet.y - self.player.y
-            distance = math.sqrt(dx * dx + dy * dy)
-            if distance < 8:
-                bullet_angle = math.atan2(dy, dx)
-                angle_diff = bullet_angle - self.player.angle
-                while angle_diff > math.pi:
-                    angle_diff -= 2 * math.pi
-                while angle_diff < -math.pi:
-                    angle_diff += 2 * math.pi
-                if abs(angle_diff) < self.player.fov / 2:
-                    screen_x = int(width / 2 + (angle_diff / (self.player.fov / 2)) * width / 2)
-                    bullet_size = max(3, int(20 / (distance + 0.1)))
-                    bullet_y = height // 2
-                    if 0 <= screen_x < width:
-                        bullet_color = (255, 255, 0) if bullet.is_player_bullet else (255, 100, 100)
-                        pygame.draw.circle(self.screen, bullet_color, (screen_x, bullet_y), bullet_size)
-
-        def render_player_ui():
-            debug_font = pygame.font.Font(None, 24)
-            player_debug = debug_font.render(f"Player: ({self.player.x:.1f}, {self.player.y:.1f}, {self.player.z:.1f})", True, (255, 255, 0))
-            self.screen.blit(player_debug, (10, height - 60))
-            enemy_count = debug_font.render(f"Enemies visible: {len([e for e in self.enemies if math.sqrt((e.x - self.player.x) ** 2 + (e.y - self.player.y) ** 2) < 10])}", True, (255, 255, 0))
-            self.screen.blit(enemy_count, (10, height - 40))
-            health_bar_width = 200
-            health_bar_height = 20
-            health_x = width - health_bar_width - 10
-            health_y = 10
-            pygame.draw.rect(self.screen, (100, 0, 0), (health_x, health_y, health_bar_width, health_bar_height))
-            health_ratio = self.player.hp / self.player.max_hp
-            health_width = int(health_bar_width * health_ratio)
-            pygame.draw.rect(self.screen, (0, 255, 0), (health_x, health_y, health_width, health_bar_height))
-            pygame.draw.rect(self.screen, (255, 255, 255), (health_x, health_y, health_bar_width, health_bar_height), 2)
-            font = pygame.font.Font(None, 24)
-            hp_text = font.render(f"HP: {self.player.hp}/{self.player.max_hp}", True, (255, 255, 255))
-            self.screen.blit(hp_text, (health_x, health_y + health_bar_height + 5))
-            potion_text = font.render(f"Potions: {self.player.potions}", True, (0, 255, 0))
-            self.screen.blit(potion_text, (health_x - 120, health_y + 5))
-            center_x, center_y = width // 2, height // 2
-            crosshair_size = 10
-            crosshair_color = (255, 255, 255) if self.player.shoot_cooldown == 0 else (255, 0, 0)
-            pygame.draw.line(self.screen, crosshair_color, (center_x - crosshair_size, center_y), (center_x + crosshair_size, center_y), 2)
-            pygame.draw.line(self.screen, crosshair_color, (center_x, center_y - crosshair_size), (center_x, center_y + crosshair_size), 2)
-            if self.player.shoot_flash > 0:
-                flash_intensity = self.player.shoot_flash / 8.0
-                flash_size = int(30 * flash_intensity)
-                flash_color = (255, int(255 * flash_intensity), 0)
-                pygame.draw.circle(self.screen, flash_color, (center_x, center_y), flash_size // 2)
-                for i in range(5):
-                    particle_x = center_x + random.randint(-flash_size, flash_size)
-                    particle_y = center_y + random.randint(-flash_size // 2, flash_size // 2)
-                    particle_size = max(1, int(flash_size // 4 * flash_intensity))
-                    pygame.draw.circle(self.screen, (255, 200, 0), (particle_x, particle_y), particle_size)
-
-        render_walls()
+        self.render_walls(width, height)
         for enemy in self.enemies:
-            render_entity(enemy)
+            self.render_entity(enemy, width, height)
         for potion in self.health_potions:
-            render_potion(potion)
+            self.render_potion(potion, width, height)
         for bullet in self.bullets:
-            render_bullet(bullet)
-        render_player_ui()
+            self.render_bullet(bullet, width, height)
+        self.render_player_ui(width, height)
 
     def draw_minimap(self):
         mini_size = 150
@@ -910,6 +877,19 @@ class Game:
             self.clock.tick(60)
         
         pygame.quit()
+
+def get_perspective_params(obj_x, obj_y, player, width, height):
+    dx = obj_x - player.x
+    dy = obj_y - player.y
+    distance = math.sqrt(dx * dx + dy * dy)
+    angle = math.atan2(dy, dx)
+    angle_diff = angle - player.angle
+    while angle_diff > math.pi:
+        angle_diff -= 2 * math.pi
+    while angle_diff < -math.pi:
+        angle_diff += 2 * math.pi
+    screen_x = int(width / 2 + (angle_diff / (player.fov / 2)) * width / 2)
+    return distance, angle_diff, screen_x
 
 if __name__ == "__main__":
     game = Game()
